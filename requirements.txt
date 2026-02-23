@@ -1,0 +1,26 @@
+# =============================================================================
+# PYTHON DEPENDENCIES
+# =============================================================================
+# Install with: pip install -r requirements.txt
+# =============================================================================
+
+# API Framework
+fastapi==0.109.0
+uvicorn==0.27.0
+pydantic==2.5.3
+
+# PDF Generation
+reportlab==4.0.8
+
+# Database connections
+mysql-connector-python==8.2.0
+redis==5.0.1
+
+# HTTP Requests (for n8n webhook, downloading images)
+requests==2.31.0
+
+# Browser Automation (for Shopify screenshots)
+playwright==1.41.0
+
+# Image Processing
+Pillow==10.2.0
