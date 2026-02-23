@@ -42,10 +42,10 @@ def screenshot_shopify_order(store_url, order_number, output_dir="/tmp"):
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=False)
-            context = browser.new_context(viewport={'width': 1280, 'height': 900})
+            browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+            print("Connected to existing Chrome")
+            context = browser.contexts[0]
             page = context.new_page()
-            page.context.add_cookies(load_cookies())
 
             url = f"https://{store_url}/admin/orders?query={order_number}"
             print(f"Loading: {url}")
@@ -61,14 +61,14 @@ def screenshot_shopify_order(store_url, order_number, output_dir="/tmp"):
                     page.locator('table tbody tr').first.click()
                     page.wait_for_timeout(3000)
                 except:
-                    browser.close()
+                    page.close()
                     return None
 
             do_scroll(page)
             page.wait_for_timeout(1000)
             page.screenshot(path=output_path, full_page=False)
             print(f"Screenshot saved: {output_path}")
-            browser.close()
+            page.close()
             return output_path
     except Exception as e:
         print(f"Error: {e}")
@@ -82,10 +82,10 @@ def screenshot_shopify_order_by_url(external_reference, order_number, output_dir
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=False)
-            context = browser.new_context(viewport={'width': 1280, 'height': 900})
+            browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+            print("Connected to existing Chrome")
+            context = browser.contexts[0]
             page = context.new_page()
-            page.context.add_cookies(load_cookies())
 
             print(f"Loading: {external_reference}")
             page.goto(external_reference, wait_until="networkidle", timeout=60000)
@@ -95,7 +95,7 @@ def screenshot_shopify_order_by_url(external_reference, order_number, output_dir
             page.wait_for_timeout(1000)
             page.screenshot(path=output_path, full_page=False)
             print(f"Screenshot saved: {output_path}")
-            browser.close()
+            page.close()
             return output_path
     except Exception as e:
         print(f"Error: {e}")
