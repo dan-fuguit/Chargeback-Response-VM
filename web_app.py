@@ -72,12 +72,54 @@ HTML = '''
             font-size: 16px;
             border: 2px solid #e0e0e0;
             border-radius: 8px;
-            margin: 10px 0 20px 0;
+            margin: 10px 0 15px 0;
             transition: border-color 0.3s;
         }
         input[type="text"]:focus {
             outline: none;
             border-color: #4facfe;
+        }
+        .format-selector {
+            margin: 0 0 20px 0;
+        }
+        .format-label {
+            font-size: 13px;
+            color: #4a5568;
+            font-weight: 600;
+            display: block;
+            margin-bottom: 10px;
+        }
+        .radio-group {
+            display: flex;
+            gap: 12px;
+        }
+        .radio-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            padding: 10px 18px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #2d3748;
+            transition: border-color 0.2s, background 0.2s;
+            user-select: none;
+        }
+        .radio-option:hover {
+            border-color: #4facfe;
+            background: #f0f8ff;
+        }
+        .radio-option input[type="radio"] {
+            width: 16px;
+            height: 16px;
+            accent-color: #4facfe;
+            cursor: pointer;
+        }
+        .radio-option.selected {
+            border-color: #4facfe;
+            background: #ebf8ff;
         }
         button, .btn {
             width: 100%;
@@ -183,12 +225,25 @@ HTML = '''
             <div class="checkmark">✅</div>
             <h2>Document Ready!</h2>
             <p>Your chargeback response has been generated successfully.</p>
-            <a href="/download/{{ file_id }}" class="btn btn-success">Download PDF</a>
+            <a href="/download/{{ file_id }}" class="btn btn-success">Download {{ 'Word Document' if file_type == 'doc' else 'PDF' }}</a>
             <a href="/" class="btn btn-secondary">Generate Another</a>
         </div>
         {% else %}
         <form method="POST" id="form">
             <input type="text" name="payment_id" id="payment_id" placeholder="Enter Payment ID" required>
+            <div class="format-selector">
+                <span class="format-label">Output Format</span>
+                <div class="radio-group">
+                    <label class="radio-option selected" id="label-pdf">
+                        <input type="radio" name="file_type" value="pdf" checked>
+                        PDF
+                    </label>
+                    <label class="radio-option" id="label-doc">
+                        <input type="radio" name="file_type" value="doc">
+                        Word (DOC)
+                    </label>
+                </div>
+            </div>
             <button type="submit" id="submit_btn">Generate PDF</button>
         </form>
         <div class="loading" id="loading">
@@ -202,6 +257,16 @@ HTML = '''
         {% endif %}
     </div>
     <script>
+        // Update button label and selected style when format changes
+        document.querySelectorAll('input[name="file_type"]').forEach(function(radio) {
+            radio.addEventListener('change', function() {
+                document.getElementById('label-pdf').classList.toggle('selected', this.value === 'pdf');
+                document.getElementById('label-doc').classList.toggle('selected', this.value === 'doc');
+                document.getElementById('submit_btn').textContent =
+                    this.value === 'doc' ? 'Generate Word Document' : 'Generate PDF';
+            });
+        });
+
         document.getElementById('form')?.addEventListener('submit', function() {
             document.getElementById('submit_btn').disabled = true;
             document.getElementById('submit_btn').textContent = 'Processing...';
@@ -217,17 +282,20 @@ def index():
     if request.method == 'POST':
         ensure_chrome_running()
         payment_id = request.form.get('payment_id', '').strip()
+        file_type = request.form.get('file_type', 'pdf')
+        if file_type not in ('pdf', 'doc'):
+            file_type = 'pdf'
         if not payment_id:
             return render_template_string(HTML, message="Please enter a payment ID", message_type="error")
-        
+
         try:
-            result = process_chargeback(payment_id)
+            result = process_chargeback(payment_id, file_type)
             if result and os.path.exists(result):
                 file_id = str(uuid.uuid4())
-                completed_files[file_id] = result
-                return render_template_string(HTML, success=True, file_id=file_id)
+                completed_files[file_id] = {'path': result, 'file_type': file_type}
+                return render_template_string(HTML, success=True, file_id=file_id, file_type=file_type)
             else:
-                return render_template_string(HTML, message="Failed to generate PDF", message_type="error")
+                return render_template_string(HTML, message="Failed to generate document", message_type="error")
         except Exception as e:
             return render_template_string(HTML, message=f"Error: {e}", message_type="error")
     
@@ -236,7 +304,8 @@ def index():
 @app.route('/download/<file_id>')
 def download(file_id):
     if file_id in completed_files:
-        filepath = completed_files[file_id]
+        entry = completed_files[file_id]
+        filepath = entry['path'] if isinstance(entry, dict) else entry
         if os.path.exists(filepath):
             return send_file(filepath, as_attachment=True)
     return redirect(url_for('index'))

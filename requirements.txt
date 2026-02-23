@@ -24,3 +24,6 @@ playwright==1.41.0
 
 # Image Processing
 Pillow==10.2.0
+
+# Word Document Generation
+python-docx==1.1.2
