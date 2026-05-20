@@ -30,7 +30,7 @@ def accept_cookies(page):
             if btn.is_visible(timeout=1200):
                 btn.click()
                 page.wait_for_timeout(800)
-                print("Cookies accepted")
+                print("🍪 Cookies accepted")
                 return
         except:
             pass
@@ -42,7 +42,6 @@ def accept_cookies(page):
 def accept_age_verification(page):
     selectors = [
         'button:has-text("Enter Site")',
-        'button:has-text("Enter")',
         'button:has-text("Yes, I am")',
         'button:has-text("Yes, I\'m")',
         'button:has-text("I am of legal age")',
@@ -53,17 +52,12 @@ def accept_age_verification(page):
         'button:has-text("Yes, I\'m 21")',
         'button:has-text("Confirm Age")',
         'button:has-text("Verify Age")',
-        'button:has-text("I Agree")',
         'a:has-text("Enter Site")',
         'a:has-text("I am of legal age")',
         '[class*="age-gate"] button',
-        '[class*="age-gate"] a',
         '[class*="age-verification"] button',
         '[id*="age-gate"] button',
         '[id*="ageGate"] button',
-        '[id*="age_gate"] button',
-        'input[type="submit"][value="Enter"]',
-        'input[type="submit"][value="Yes"]',
     ]
 
     for sel in selectors:
@@ -73,10 +67,9 @@ def accept_age_verification(page):
                 btn.click()
                 page.wait_for_timeout(1500)
                 print("Age verification accepted")
-                return True
+                return
         except:
             pass
-    return False
 
 
 # =========================
@@ -200,17 +193,14 @@ class ShopifyTrackingCapture:
             print(f"Loading: {tracking_url}")
             page.goto(tracking_url, wait_until="domcontentloaded", timeout=60000)
 
-            # Wait for initial render
+            # Wait longer for FedEx to load
             print("Waiting for page to load...")
-            page.wait_for_timeout(5000)
+            page.wait_for_timeout(8000)
 
-            # Dismiss age gate first, then cookies
             accept_age_verification(page)
-            page.wait_for_timeout(1000)
             accept_cookies(page)
 
-            # Extra wait for main content after any dismissals
-            page.wait_for_timeout(4000)
+            page.wait_for_timeout(3000)
 
             # Detect FedEx block
             page_content = page.content().lower()
