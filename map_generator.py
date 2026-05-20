@@ -11,7 +11,7 @@ import json
 import mysql.connector
 from playwright.sync_api import sync_playwright
 import math
-import tempfile
+import tempfile  # still used for output_dir default
 
 # Database config
 DB_CONFIG = {
@@ -359,18 +359,14 @@ def generate_location_map(paymentid, output_dir=None):
     </html>
     """
 
-    # Save HTML temporarily
-    temp_dir = tempfile.gettempdir()
-    html_path = os.path.join(temp_dir, "map_temp.html")
-    with open(html_path, 'w') as f:
-        f.write(html_content)
-
     # Screenshot with Playwright
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page(viewport={'width': 800, 'height': 500})
-            page.goto(f"file:///{html_path}")
+            # Use set_content instead of file:// so external resources
+            # (Leaflet CDN, OSM tiles) are not blocked by CORS restrictions
+            page.set_content(html_content, wait_until="networkidle", timeout=30000)
             page.wait_for_timeout(2000)
             page.screenshot(path=output_path)
             browser.close()
