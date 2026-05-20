@@ -37,6 +37,42 @@ def accept_cookies(page):
 
 
 # =========================
+# AGE VERIFICATION HANDLER
+# =========================
+def accept_age_verification(page):
+    selectors = [
+        'button:has-text("Enter Site")',
+        'button:has-text("Yes, I am")',
+        'button:has-text("Yes, I\'m")',
+        'button:has-text("I am of legal age")',
+        'button:has-text("I\'m of legal age")',
+        'button:has-text("I am 18")',
+        'button:has-text("I am 21")',
+        'button:has-text("Yes, I\'m 18")',
+        'button:has-text("Yes, I\'m 21")',
+        'button:has-text("Confirm Age")',
+        'button:has-text("Verify Age")',
+        'a:has-text("Enter Site")',
+        'a:has-text("I am of legal age")',
+        '[class*="age-gate"] button',
+        '[class*="age-verification"] button',
+        '[id*="age-gate"] button',
+        '[id*="ageGate"] button',
+    ]
+
+    for sel in selectors:
+        try:
+            btn = page.locator(sel).first
+            if btn.is_visible(timeout=1500):
+                btn.click()
+                page.wait_for_timeout(1500)
+                print("Age verification accepted")
+                return
+        except:
+            pass
+
+
+# =========================
 # MAIN CLASS
 # =========================
 class ShopifyTrackingCapture:
@@ -161,6 +197,7 @@ class ShopifyTrackingCapture:
             print("Waiting for page to load...")
             page.wait_for_timeout(8000)
 
+            accept_age_verification(page)
             accept_cookies(page)
 
             page.wait_for_timeout(3000)
