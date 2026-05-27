@@ -1,7 +1,6 @@
 from flask import Flask, request, send_file, render_template_string, redirect, url_for, session
 import os
 import sys
-import subprocess
 import requests
 import time
 import uuid
@@ -15,15 +14,6 @@ app.secret_key = 'fugu-chargeback-secret-key'
 
 # Store completed files temporarily
 completed_files = {}
-
-def ensure_chrome_running():
-    try:
-        requests.get("http://localhost:9222/json", timeout=2)
-        print("Chrome already running")
-    except:
-        print("Starting Chrome...")
-        subprocess.Popen(['chromium-browser', '--remote-debugging-port=9222'])
-        time.sleep(3)
 
 HTML = '''
 <!DOCTYPE html>
@@ -433,5 +423,4 @@ def update_cookies():
 
 
 if __name__ == '__main__':
-    ensure_chrome_running()
     app.run(host='0.0.0.0', port=5000)

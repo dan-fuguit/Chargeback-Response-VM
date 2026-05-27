@@ -178,29 +178,30 @@ class ShopifyTrackingCapture:
     def screenshot_with_context(self, context, tracking_url, output_path):
         """Take tracking screenshot using an already-open Playwright context."""
         page = context.new_page()
-        print(f"Loading: {tracking_url}")
-        page.goto(tracking_url, wait_until="domcontentloaded", timeout=60000)
-        print("Waiting for page to load...")
-        page.wait_for_timeout(8000)
-        accept_age_verification(page)
-        accept_cookies(page)
-        page.wait_for_timeout(3000)
-        page_content = page.content().lower()
-        if "unable to retrieve" in page_content or "we are sorry" in page_content:
-            page.close()
-            raise Exception("FedEx blocked page")
         try:
-            page.wait_for_selector(
-                "text=Delivered, text=In transit, text=Out for delivery, text=Shipment information",
-                timeout=10000,
-            )
-            print("Tracking info found!")
-        except PlaywrightTimeoutError:
-            print("Timeout waiting for tracking info, taking screenshot anyway...")
-        page.screenshot(path=output_path)
-        print(f"Screenshot saved: {output_path}")
-        page.close()
-        return output_path
+            print(f"Loading: {tracking_url}")
+            page.goto(tracking_url, wait_until="domcontentloaded", timeout=60000)
+            print("Waiting for page to load...")
+            page.wait_for_timeout(8000)
+            accept_age_verification(page)
+            accept_cookies(page)
+            page.wait_for_timeout(3000)
+            page_content = page.content().lower()
+            if "unable to retrieve" in page_content or "we are sorry" in page_content:
+                raise Exception("FedEx blocked page")
+            try:
+                page.wait_for_selector(
+                    "text=Delivered, text=In transit, text=Out for delivery, text=Shipment information",
+                    timeout=10000,
+                )
+                print("Tracking info found!")
+            except PlaywrightTimeoutError:
+                print("Timeout waiting for tracking info, taking screenshot anyway...")
+            page.screenshot(path=output_path)
+            print(f"Screenshot saved: {output_path}")
+            return output_path
+        finally:
+            page.close()
 
     def _screenshot_once(self, tracking_url, output_path):
         with sync_playwright() as p:
