@@ -42,7 +42,7 @@ def screenshot_payment_info(payment_id, tenant_id, output_dir="/tmp"):
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=False)
+            browser = p.chromium.launch(headless=True)
             context = browser.new_context()
 
             # Add cookies

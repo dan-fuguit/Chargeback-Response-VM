@@ -230,7 +230,6 @@ HTML = '''
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
-        ensure_chrome_running()
         payment_id = request.form.get('payment_id', '').strip()
         if not payment_id:
             return render_template_string(HTML, message="Please enter a payment ID", message_type="error")
