@@ -130,13 +130,13 @@ async def async_call_webhook(paymentid):
     return await async_run(_call)
 
 
-async def async_screenshot_order(shop_name, external_reference, clean_reference):
+async def async_screenshot_order(shop_name, external_reference, clean_reference, tenant_id=None):
     def _screenshot():
         try:
             if external_reference and shop_name:
                 url = f"https://admin.shopify.com/store/{shop_name}/orders/{external_reference}"
-                return screenshot_shopify_order_by_url(url, clean_reference, SCREENSHOT_DIR)
-            return screenshot_shopify_order(shop_name, clean_reference, SCREENSHOT_DIR)
+                return screenshot_shopify_order_by_url(url, clean_reference, SCREENSHOT_DIR, tenant_id=tenant_id)
+            return screenshot_shopify_order(shop_name, clean_reference, SCREENSHOT_DIR, tenant_id=tenant_id)
         except Exception as e:
             print(f"Order screenshot error: {e}")
             return None
@@ -255,7 +255,7 @@ async def process_chargeback_async(paymentid, output_format="pdf"):
         print("Running parallel tasks for FRAUD case...")
 
         tasks = {
-            'order': async_screenshot_order(shop_name or tenant, external_reference, clean_reference),
+            'order': async_screenshot_order(shop_name or tenant, external_reference, clean_reference, tenant_id=tenant_id),
             'tracking': async_screenshot_tracking(tenant_id, tenant, clean_reference),
             'identity': async_screenshot_identity(paymentid, tenant_id),
             'card_details': async_get_card_details(tenant_id, external_reference, reference),
@@ -320,7 +320,7 @@ async def process_chargeback_async(paymentid, output_format="pdf"):
         print("Running parallel tasks for PNR case...")
 
         tasks = {
-            'order': async_screenshot_order(shop_name or tenant, external_reference, clean_reference),
+            'order': async_screenshot_order(shop_name or tenant, external_reference, clean_reference, tenant_id=tenant_id),
             'tracking': async_screenshot_tracking(tenant_id, tenant, clean_reference),
             'card_details': async_get_card_details(tenant_id, external_reference, reference),
         }
@@ -354,7 +354,7 @@ async def process_chargeback_async(paymentid, output_format="pdf"):
         print("Running parallel tasks for PNA case...")
 
         tasks = {
-            'order': async_screenshot_order(shop_name or tenant, external_reference, clean_reference),
+            'order': async_screenshot_order(shop_name or tenant, external_reference, clean_reference, tenant_id=tenant_id),
             'tracking': async_screenshot_tracking(tenant_id, tenant, clean_reference),
             'card_details': async_get_card_details(tenant_id, external_reference, reference),
         }
@@ -388,7 +388,7 @@ async def process_chargeback_async(paymentid, output_format="pdf"):
         print("Running parallel tasks for CNP case...")
 
         tasks = {
-            'order': async_screenshot_order(shop_name or tenant, external_reference, clean_reference),
+            'order': async_screenshot_order(shop_name or tenant, external_reference, clean_reference, tenant_id=tenant_id),
             'tracking': async_screenshot_tracking(tenant_id, tenant, clean_reference),
             'card_details': async_get_card_details(tenant_id, external_reference, reference),
         }
