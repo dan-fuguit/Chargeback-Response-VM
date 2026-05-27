@@ -4,10 +4,10 @@ import json
 
 COOKIES_FILE = os.path.join(os.path.dirname(__file__), "cookies.json")
 
+
 def load_cookies():
     with open(COOKIES_FILE, 'r') as f:
         cookies = json.load(f)
-    # Convert to Playwright format
     for c in cookies:
         if 'sameSite' in c:
             c['sameSite'] = c['sameSite'].capitalize()
@@ -16,6 +16,30 @@ def load_cookies():
         if 'expirationDate' in c:
             c['expires'] = c.pop('expirationDate')
     return cookies
+
+
+def _connect_chrome(p):
+    try:
+        browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+        print("Connected to existing Chrome")
+        return browser, browser.contexts[0]
+    except Exception as e:
+        print(f"Could not connect to Chrome on port 9222: {e}")
+        raise
+
+
+def _wait_for_cloudflare(page, timeout=15000):
+    """Wait for Cloudflare challenge to clear if present."""
+    start = __import__('time').time()
+    while (__import__('time').time() - start) * 1000 < timeout:
+        content = page.content().lower()
+        if 'checking your browser' in content or 'just a moment' in content:
+            page.wait_for_timeout(2000)
+            continue
+        return True
+    print("Cloudflare challenge did not clear in time")
+    return False
+
 
 def do_scroll(page):
     selectors = [
@@ -34,6 +58,7 @@ def do_scroll(page):
             continue
     return False
 
+
 def screenshot_shopify_order(store_url, order_number, output_dir="/tmp"):
     if not store_url.endswith('.myshopify.com'):
         store_url = f"{store_url}.myshopify.com"
@@ -42,15 +67,14 @@ def screenshot_shopify_order(store_url, order_number, output_dir="/tmp"):
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=False)
-            context = browser.new_context(viewport={'width': 1280, 'height': 900})
+            browser, context = _connect_chrome(p)
             page = context.new_page()
-            page.context.add_cookies(load_cookies())
 
             url = f"https://{store_url}/admin/orders?query={order_number}"
             print(f"Loading: {url}")
-            page.goto(url, wait_until="networkidle", timeout=60000)
-            page.wait_for_timeout(2000)
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            _wait_for_cloudflare(page)
+            page.wait_for_timeout(3000)
 
             try:
                 order_link = page.locator(f'a:has-text("#{order_number}")').first
@@ -61,18 +85,19 @@ def screenshot_shopify_order(store_url, order_number, output_dir="/tmp"):
                     page.locator('table tbody tr').first.click()
                     page.wait_for_timeout(3000)
                 except:
-                    browser.close()
+                    page.close()
                     return None
 
             do_scroll(page)
             page.wait_for_timeout(1000)
             page.screenshot(path=output_path, full_page=False)
             print(f"Screenshot saved: {output_path}")
-            browser.close()
+            page.close()
             return output_path
     except Exception as e:
         print(f"Error: {e}")
         return None
+
 
 def screenshot_shopify_order_by_url(external_reference, order_number, output_dir="/tmp"):
     if not external_reference:
@@ -82,24 +107,24 @@ def screenshot_shopify_order_by_url(external_reference, order_number, output_dir
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=False)
-            context = browser.new_context(viewport={'width': 1280, 'height': 900})
+            browser, context = _connect_chrome(p)
             page = context.new_page()
-            page.context.add_cookies(load_cookies())
 
             print(f"Loading: {external_reference}")
-            page.goto(external_reference, wait_until="networkidle", timeout=60000)
+            page.goto(external_reference, wait_until="domcontentloaded", timeout=60000)
+            _wait_for_cloudflare(page)
             page.wait_for_timeout(3000)
 
             do_scroll(page)
             page.wait_for_timeout(1000)
             page.screenshot(path=output_path, full_page=False)
             print(f"Screenshot saved: {output_path}")
-            browser.close()
+            page.close()
             return output_path
     except Exception as e:
         print(f"Error: {e}")
         return None
+
 
 def get_order_proof(store_url, order_number, output_dir="/tmp"):
     path = screenshot_shopify_order(store_url, order_number, output_dir)
