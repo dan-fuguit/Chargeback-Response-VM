@@ -16,6 +16,7 @@ from chargeback_generator_fraud import generate_pdf as generate_fraud_pdf
 from chargeback_generator_pnr import generate_pdf as generate_pnr_pdf
 from chargeback_generator_pna import generate_pdf as generate_pna_pdf
 from chargeback_generator_cnp import generate_pdf as generate_cnp_pdf
+from docx_generator import generate_docx_fraud, generate_docx_pnr, generate_docx_pna, generate_docx_cnp
 from session_evidence_extractor import SessionEvidenceExtractor
 from shopify_order_screenshot import screenshot_shopify_order, screenshot_shopify_order_by_url
 from shopify_tracking import get_shipping_proof
@@ -210,7 +211,7 @@ async def async_generate_location_map(paymentid):
     return await async_run(_generate)
 
 
-async def process_chargeback_async(paymentid):
+async def process_chargeback_async(paymentid, output_format="pdf"):
     print("=" * 50)
     print("CHARGEBACK DISPUTE GENERATOR")
     print("=" * 50)
@@ -307,9 +308,13 @@ async def process_chargeback_async(paymentid):
                 screenshots['avs_screenshot'] = results_dict['avs']['screenshot_path']
                 print(f"  ✓ AVS details")
 
-        output_path = f"bulk_responses/chargeback_fraud_{reference}.pdf"
+        ext = "docx" if output_format == "docx" else "pdf"
+        output_path = f"bulk_responses/chargeback_fraud_{reference}.{ext}"
         os.makedirs("bulk_responses", exist_ok=True)
-        generate_fraud_pdf(data, kyc_images, output_path, session_evidence, tenant, screenshots, public_records_data, location_map_data)
+        if output_format == "docx":
+            generate_docx_fraud(data, kyc_images, output_path, session_evidence, tenant, screenshots, public_records_data, location_map_data)
+        else:
+            generate_fraud_pdf(data, kyc_images, output_path, session_evidence, tenant, screenshots, public_records_data, location_map_data)
 
     elif reason_type == "pnr":
         print("Running parallel tasks for PNR case...")
@@ -337,9 +342,13 @@ async def process_chargeback_async(paymentid):
                 screenshots['card_details_screenshot'] = results_dict['card_details']['screenshot_path']
                 print(f"  ✓ Card details")
 
-        output_path = f"bulk_responses/chargeback_pnr_{reference}.pdf"
+        ext = "docx" if output_format == "docx" else "pdf"
+        output_path = f"bulk_responses/chargeback_pnr_{reference}.{ext}"
         os.makedirs("bulk_responses", exist_ok=True)
-        generate_pnr_pdf(data, output_path, tenant, screenshots)
+        if output_format == "docx":
+            generate_docx_pnr(data, output_path, tenant, screenshots)
+        else:
+            generate_pnr_pdf(data, output_path, tenant, screenshots)
 
     elif reason_type == "pna":
         print("Running parallel tasks for PNA case...")
@@ -367,9 +376,13 @@ async def process_chargeback_async(paymentid):
                 screenshots['card_details_screenshot'] = results_dict['card_details']['screenshot_path']
                 print(f"  ✓ Card details")
 
-        output_path = f"bulk_responses/chargeback_pna_{reference}.pdf"
+        ext = "docx" if output_format == "docx" else "pdf"
+        output_path = f"bulk_responses/chargeback_pna_{reference}.{ext}"
         os.makedirs("bulk_responses", exist_ok=True)
-        generate_pna_pdf(data, output_path, tenant, screenshots)
+        if output_format == "docx":
+            generate_docx_pna(data, output_path, tenant, screenshots)
+        else:
+            generate_pna_pdf(data, output_path, tenant, screenshots)
 
     elif reason_type == "cnp":
         print("Running parallel tasks for CNP case...")
@@ -397,17 +410,21 @@ async def process_chargeback_async(paymentid):
                 screenshots['card_details_screenshot'] = results_dict['card_details']['screenshot_path']
                 print(f"  ✓ Card details")
 
-        output_path = f"bulk_responses/chargeback_cnp_{reference}.pdf"
+        ext = "docx" if output_format == "docx" else "pdf"
+        output_path = f"bulk_responses/chargeback_cnp_{reference}.{ext}"
         os.makedirs("bulk_responses", exist_ok=True)
-        generate_cnp_pdf(data, output_path, tenant, screenshots)
+        if output_format == "docx":
+            generate_docx_cnp(data, output_path, tenant, screenshots)
+        else:
+            generate_cnp_pdf(data, output_path, tenant, screenshots)
 
-    print(f"\nPDF created: {output_path}")
+    print(f"\nDocument created: {output_path}")
     return output_path
 
 
-def process_chargeback(paymentid):
+def process_chargeback(paymentid, output_format="pdf"):
     """Sync wrapper for web_app.py"""
-    return asyncio.run(process_chargeback_async(paymentid))
+    return asyncio.run(process_chargeback_async(paymentid, output_format))
 
 
 if __name__ == "__main__":

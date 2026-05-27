@@ -183,13 +183,23 @@ HTML = '''
             <div class="checkmark">✅</div>
             <h2>Document Ready!</h2>
             <p>Your chargeback response has been generated successfully.</p>
-            <a href="/download/{{ file_id }}" class="btn btn-success">Download PDF</a>
+            <a href="/download/{{ file_id }}" class="btn btn-success">Download {{ file_format }}</a>
             <a href="/" class="btn btn-secondary">Generate Another</a>
         </div>
         {% else %}
         <form method="POST" id="form">
             <input type="text" name="payment_id" id="payment_id" placeholder="Enter Payment ID" required>
-            <button type="submit" id="submit_btn">Generate PDF</button>
+            <div style="display: flex; gap: 10px; margin: 10px 0 20px 0;">
+                <label style="flex: 1; display: flex; align-items: center; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; cursor: pointer; transition: border-color 0.3s;">
+                    <input type="radio" name="output_format" value="pdf" checked style="margin-right: 8px; accent-color: #4facfe;">
+                    <span style="font-size: 14px; color: #2d3748;">PDF Document</span>
+                </label>
+                <label style="flex: 1; display: flex; align-items: center; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; cursor: pointer; transition: border-color 0.3s;">
+                    <input type="radio" name="output_format" value="docx" style="margin-right: 8px; accent-color: #4facfe;">
+                    <span style="font-size: 14px; color: #2d3748;">Word Document</span>
+                </label>
+            </div>
+            <button type="submit" id="submit_btn">Generate Document</button>
         </form>
         <div class="loading" id="loading">
             <div class="spinner"></div>
@@ -220,14 +230,19 @@ def index():
         if not payment_id:
             return render_template_string(HTML, message="Please enter a payment ID", message_type="error")
         
+        output_format = request.form.get('output_format', 'pdf').strip()
+        if output_format not in ('pdf', 'docx'):
+            output_format = 'pdf'
+
         try:
-            result = process_chargeback(payment_id)
+            result = process_chargeback(payment_id, output_format)
             if result and os.path.exists(result):
                 file_id = str(uuid.uuid4())
                 completed_files[file_id] = result
-                return render_template_string(HTML, success=True, file_id=file_id)
+                file_format = "Word Document" if output_format == "docx" else "PDF"
+                return render_template_string(HTML, success=True, file_id=file_id, file_format=file_format)
             else:
-                return render_template_string(HTML, message="Failed to generate PDF", message_type="error")
+                return render_template_string(HTML, message="Failed to generate document", message_type="error")
         except Exception as e:
             return render_template_string(HTML, message=f"Error: {e}", message_type="error")
     
