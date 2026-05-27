@@ -5,6 +5,7 @@ import subprocess
 import requests
 import time
 import uuid
+import json
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from chargeback_main import process_chargeback
@@ -255,6 +256,135 @@ def download(file_id):
         if os.path.exists(filepath):
             return send_file(filepath, as_attachment=True)
     return redirect(url_for('index'))
+
+
+COOKIES_HTML = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Update FUGU Cookies</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 660px;
+            margin: 20px;
+        }
+        h1 { color: #1a1a2e; font-size: 22px; margin: 0 0 6px 0; }
+        p { color: #666; font-size: 14px; margin: 0 0 20px 0; }
+        ol { color: #444; font-size: 13px; padding-left: 20px; margin: 0 0 20px 0; line-height: 1.8; }
+        code { background: #f0f4f8; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+        textarea {
+            width: 100%;
+            height: 200px;
+            padding: 12px;
+            font-size: 12px;
+            font-family: monospace;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            resize: vertical;
+            margin-bottom: 16px;
+        }
+        textarea:focus { outline: none; border-color: #4facfe; }
+        .btn {
+            width: 100%;
+            padding: 14px;
+            font-size: 15px;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .btn-back {
+            display: inline-block;
+            margin-top: 12px;
+            color: #4facfe;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .msg { padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
+        .success { background: #f0fff0; color: #006600; border: 1px solid #ccffcc; }
+        .error   { background: #fff0f0; color: #cc0000; border: 1px solid #ffcccc; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Update FUGU Session Cookies</h1>
+        <p>Paste fresh cookies here when the session expires — no code editing needed.</p>
+        <ol>
+            <li>Open <strong>app.fugu-it.com</strong> in Chrome and log in</li>
+            <li>Install the <strong>EditThisCookie</strong> browser extension</li>
+            <li>Click the extension icon and choose <strong>Export</strong></li>
+            <li>Paste the JSON array below and click Save</li>
+        </ol>
+        {% if message %}
+        <div class="msg {{ msg_type }}">{{ message }}</div>
+        {% endif %}
+        <form method="POST">
+            <textarea name="cookies_json" placeholder='[{"name": "session", "value": "...", "domain": ".fugu-it.com", "path": "/"}, ...]'>{{ current_cookies }}</textarea>
+            <button type="submit" class="btn">Save Cookies</button>
+        </form>
+        <a href="/" class="btn-back">← Back to main app</a>
+    </div>
+</body>
+</html>
+'''
+
+FUGU_COOKIES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fugu_cookies.json")
+
+
+@app.route('/cookies', methods=['GET', 'POST'])
+def update_cookies():
+    message = None
+    msg_type = None
+
+    current_cookies = ''
+    if os.path.exists(FUGU_COOKIES_FILE):
+        with open(FUGU_COOKIES_FILE, 'r') as f:
+            current_cookies = f.read()
+
+    if request.method == 'POST':
+        raw = request.form.get('cookies_json', '').strip()
+        try:
+            cookies = json.loads(raw)
+            if not isinstance(cookies, list):
+                raise ValueError("Expected a JSON array")
+            # Keep only fields Playwright needs
+            cleaned = []
+            for c in cookies:
+                entry = {
+                    'name': c['name'],
+                    'value': c['value'],
+                    'domain': c['domain'],
+                    'path': c.get('path', '/'),
+                }
+                cleaned.append(entry)
+            with open(FUGU_COOKIES_FILE, 'w') as f:
+                json.dump(cleaned, f, indent=2)
+            current_cookies = json.dumps(cleaned, indent=2)
+            message = f"Saved {len(cleaned)} cookies successfully."
+            msg_type = 'success'
+        except Exception as e:
+            message = f"Invalid JSON: {e}"
+            msg_type = 'error'
+
+    return render_template_string(COOKIES_HTML, message=message, msg_type=msg_type, current_cookies=current_cookies)
+
 
 if __name__ == '__main__':
     ensure_chrome_running()
