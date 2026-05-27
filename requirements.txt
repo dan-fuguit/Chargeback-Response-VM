@@ -12,6 +12,9 @@ pydantic==2.5.3
 # PDF Generation
 reportlab==4.0.8
 
+# Word Document Generation
+python-docx==1.1.0
+
 # Database connections
 mysql-connector-python==8.2.0
 redis==5.0.1
