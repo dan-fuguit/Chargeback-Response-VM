@@ -18,8 +18,8 @@ from chargeback_generator_pna import generate_pdf as generate_pna_pdf
 from chargeback_generator_cnp import generate_pdf as generate_cnp_pdf
 from docx_generator import generate_docx_fraud, generate_docx_pnr, generate_docx_pna, generate_docx_cnp
 from session_evidence_extractor import SessionEvidenceExtractor
-from shopify_order_screenshot import screenshot_shopify_order, screenshot_shopify_order_by_url
-from shopify_tracking import get_shipping_proof
+from shopify_order_screenshot import screenshot_with_context as order_screenshot_with_context
+from shopify_tracking import ShopifyTrackingCapture, get_shipping_proof
 from fugu_screenshot import screenshot_payment_info
 from public_records import get_public_records
 from map_generator import generate_location_map
@@ -130,27 +130,76 @@ async def async_call_webhook(paymentid):
     return await async_run(_call)
 
 
-async def async_screenshot_order(shop_name, external_reference, clean_reference, tenant_id=None):
-    def _screenshot():
-        try:
-            if external_reference and shop_name:
-                url = f"https://admin.shopify.com/store/{shop_name}/orders/{external_reference}"
-                return screenshot_shopify_order_by_url(url, clean_reference, SCREENSHOT_DIR, tenant_id=tenant_id)
-            return screenshot_shopify_order(shop_name, clean_reference, SCREENSHOT_DIR, tenant_id=tenant_id)
-        except Exception as e:
-            print(f"Order screenshot error: {e}")
-            return None
-    return await async_run(_screenshot)
+async def async_shopify_screenshots(tenant_id, shop_name, external_reference, clean_reference, tenant_name):
+    """
+    Order + tracking screenshots in a single CDP session.
+    Connecting to Chrome twice in parallel causes new windows — sharing one
+    connection keeps both screenshots as tabs in the existing window.
+    """
+    def _combined():
+        from playwright.sync_api import sync_playwright
+        results = {}
 
-
-async def async_screenshot_tracking(tenant_id, tenant_name, clean_reference):
-    def _screenshot():
+        # --- Step 1: get tracking URL via API (no browser needed) ---
+        tracking_info = None
+        cap = ShopifyTrackingCapture()
         try:
-            return get_shipping_proof(tenant_id=tenant_id, tenant_name=tenant_name, reference=clean_reference, output_dir=SCREENSHOT_DIR)
+            creds = cap.get_shopify_credentials_by_id(tenant_id) if tenant_id else None
+            if creds:
+                tracking_info = cap.get_tracking_info(
+                    creds['shopname'], creds['accesstoken'], clean_reference
+                )
         except Exception as e:
-            print(f"Tracking error: {e}")
-            return None
-    return await async_run(_screenshot)
+            print(f"Tracking API error: {e}")
+        finally:
+            cap.close()
+
+        # --- Step 2: both screenshots in ONE CDP session ---
+        order_url = None
+        if external_reference and shop_name:
+            order_url = f"https://admin.shopify.com/store/{shop_name}/orders/{external_reference}"
+        elif shop_name:
+            store = shop_name if shop_name.endswith('.myshopify.com') else f"{shop_name}.myshopify.com"
+            order_url = f"https://{store}/admin/orders?query={clean_reference}"
+
+        tracking_url = (tracking_info or {}).get('tracking_url')
+
+        if not order_url and not tracking_url:
+            return results
+
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+                print("Connected to existing Chrome")
+                context = browser.contexts[0]
+
+                if order_url:
+                    order_path = os.path.join(SCREENSHOT_DIR, f"shopify_order_{clean_reference}.png")
+                    try:
+                        order_screenshot_with_context(context, order_url, order_path)
+                        results['order_screenshot'] = order_path
+                        print("  ✓ Order screenshot")
+                    except Exception as e:
+                        print(f"  Order screenshot error: {e}")
+
+                if tracking_url:
+                    tracking_path = os.path.join(SCREENSHOT_DIR, f"tracking_{clean_reference}.png")
+                    try:
+                        cap2 = ShopifyTrackingCapture()
+                        cap2.screenshot_with_context(context, tracking_url, tracking_path)
+                        cap2.close()
+                        results['tracking_screenshot'] = tracking_path
+                        results['tracking_url'] = tracking_url
+                        print("  ✓ Tracking screenshot")
+                    except Exception as e:
+                        print(f"  Tracking screenshot error: {e}")
+
+        except Exception as e:
+            print(f"CDP connection error: {e}")
+
+        return results
+
+    return await async_run(_combined)
 
 
 async def async_screenshot_identity(paymentid, tenant_id):
@@ -255,8 +304,7 @@ async def process_chargeback_async(paymentid, output_format="pdf"):
         print("Running parallel tasks for FRAUD case...")
 
         tasks = {
-            'order': async_screenshot_order(shop_name or tenant, external_reference, clean_reference, tenant_id=tenant_id),
-            'tracking': async_screenshot_tracking(tenant_id, tenant, clean_reference),
+            'shopify': async_shopify_screenshots(tenant_id, shop_name or tenant, external_reference, clean_reference, tenant),
             'identity': async_screenshot_identity(paymentid, tenant_id),
             'card_details': async_get_card_details(tenant_id, external_reference, reference),
             'session': async_get_session_evidence(paymentid),
@@ -275,15 +323,13 @@ async def process_chargeback_async(paymentid, output_format="pdf"):
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
         results_dict = dict(zip(tasks.keys(), results))
 
-        if results_dict.get('order') and not isinstance(results_dict['order'], Exception):
-            screenshots['order_screenshot'] = results_dict['order']
-            print(f"  ✓ Order screenshot")
-        if results_dict.get('tracking') and not isinstance(results_dict['tracking'], Exception):
-            tracking = results_dict['tracking']
-            if tracking and tracking.get('screenshot_path'):
-                screenshots['tracking_screenshot'] = tracking['screenshot_path']
-                screenshots['tracking_url'] = tracking.get('tracking_url')
-                print(f"  ✓ Tracking screenshot")
+        shopify = results_dict.get('shopify') or {}
+        if not isinstance(shopify, Exception):
+            if shopify.get('order_screenshot'):
+                screenshots['order_screenshot'] = shopify['order_screenshot']
+            if shopify.get('tracking_screenshot'):
+                screenshots['tracking_screenshot'] = shopify['tracking_screenshot']
+                screenshots['tracking_url'] = shopify.get('tracking_url')
         if results_dict.get('identity') and not isinstance(results_dict['identity'], Exception):
             screenshots['identity_screenshot'] = results_dict['identity']
             print(f"  ✓ Identity screenshot")
@@ -320,23 +366,20 @@ async def process_chargeback_async(paymentid, output_format="pdf"):
         print("Running parallel tasks for PNR case...")
 
         tasks = {
-            'order': async_screenshot_order(shop_name or tenant, external_reference, clean_reference, tenant_id=tenant_id),
-            'tracking': async_screenshot_tracking(tenant_id, tenant, clean_reference),
+            'shopify': async_shopify_screenshots(tenant_id, shop_name or tenant, external_reference, clean_reference, tenant),
             'card_details': async_get_card_details(tenant_id, external_reference, reference),
         }
 
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
         results_dict = dict(zip(tasks.keys(), results))
 
-        if results_dict.get('order') and not isinstance(results_dict['order'], Exception):
-            screenshots['order_screenshot'] = results_dict['order']
-            print(f"  ✓ Order screenshot")
-        if results_dict.get('tracking') and not isinstance(results_dict['tracking'], Exception):
-            tracking = results_dict['tracking']
-            if tracking and tracking.get('screenshot_path'):
-                screenshots['tracking_screenshot'] = tracking['screenshot_path']
-                screenshots['tracking_url'] = tracking.get('tracking_url')
-                print(f"  ✓ Tracking screenshot")
+        shopify = results_dict.get('shopify') or {}
+        if not isinstance(shopify, Exception):
+            if shopify.get('order_screenshot'):
+                screenshots['order_screenshot'] = shopify['order_screenshot']
+            if shopify.get('tracking_screenshot'):
+                screenshots['tracking_screenshot'] = shopify['tracking_screenshot']
+                screenshots['tracking_url'] = shopify.get('tracking_url')
         if results_dict.get('card_details') and not isinstance(results_dict['card_details'], Exception):
             if results_dict['card_details'].get('screenshot_path'):
                 screenshots['card_details_screenshot'] = results_dict['card_details']['screenshot_path']
@@ -354,23 +397,20 @@ async def process_chargeback_async(paymentid, output_format="pdf"):
         print("Running parallel tasks for PNA case...")
 
         tasks = {
-            'order': async_screenshot_order(shop_name or tenant, external_reference, clean_reference, tenant_id=tenant_id),
-            'tracking': async_screenshot_tracking(tenant_id, tenant, clean_reference),
+            'shopify': async_shopify_screenshots(tenant_id, shop_name or tenant, external_reference, clean_reference, tenant),
             'card_details': async_get_card_details(tenant_id, external_reference, reference),
         }
 
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
         results_dict = dict(zip(tasks.keys(), results))
 
-        if results_dict.get('order') and not isinstance(results_dict['order'], Exception):
-            screenshots['order_screenshot'] = results_dict['order']
-            print(f"  ✓ Order screenshot")
-        if results_dict.get('tracking') and not isinstance(results_dict['tracking'], Exception):
-            tracking = results_dict['tracking']
-            if tracking and tracking.get('screenshot_path'):
-                screenshots['tracking_screenshot'] = tracking['screenshot_path']
-                screenshots['tracking_url'] = tracking.get('tracking_url')
-                print(f"  ✓ Tracking screenshot")
+        shopify = results_dict.get('shopify') or {}
+        if not isinstance(shopify, Exception):
+            if shopify.get('order_screenshot'):
+                screenshots['order_screenshot'] = shopify['order_screenshot']
+            if shopify.get('tracking_screenshot'):
+                screenshots['tracking_screenshot'] = shopify['tracking_screenshot']
+                screenshots['tracking_url'] = shopify.get('tracking_url')
         if results_dict.get('card_details') and not isinstance(results_dict['card_details'], Exception):
             if results_dict['card_details'].get('screenshot_path'):
                 screenshots['card_details_screenshot'] = results_dict['card_details']['screenshot_path']
@@ -388,23 +428,20 @@ async def process_chargeback_async(paymentid, output_format="pdf"):
         print("Running parallel tasks for CNP case...")
 
         tasks = {
-            'order': async_screenshot_order(shop_name or tenant, external_reference, clean_reference, tenant_id=tenant_id),
-            'tracking': async_screenshot_tracking(tenant_id, tenant, clean_reference),
+            'shopify': async_shopify_screenshots(tenant_id, shop_name or tenant, external_reference, clean_reference, tenant),
             'card_details': async_get_card_details(tenant_id, external_reference, reference),
         }
 
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
         results_dict = dict(zip(tasks.keys(), results))
 
-        if results_dict.get('order') and not isinstance(results_dict['order'], Exception):
-            screenshots['order_screenshot'] = results_dict['order']
-            print(f"  ✓ Order screenshot")
-        if results_dict.get('tracking') and not isinstance(results_dict['tracking'], Exception):
-            tracking = results_dict['tracking']
-            if tracking and tracking.get('screenshot_path'):
-                screenshots['tracking_screenshot'] = tracking['screenshot_path']
-                screenshots['tracking_url'] = tracking.get('tracking_url')
-                print(f"  ✓ Tracking screenshot")
+        shopify = results_dict.get('shopify') or {}
+        if not isinstance(shopify, Exception):
+            if shopify.get('order_screenshot'):
+                screenshots['order_screenshot'] = shopify['order_screenshot']
+            if shopify.get('tracking_screenshot'):
+                screenshots['tracking_screenshot'] = shopify['tracking_screenshot']
+                screenshots['tracking_url'] = shopify.get('tracking_url')
         if results_dict.get('card_details') and not isinstance(results_dict['card_details'], Exception):
             if results_dict['card_details'].get('screenshot_path'):
                 screenshots['card_details_screenshot'] = results_dict['card_details']['screenshot_path']
