@@ -7,35 +7,57 @@ COOKIES_FILE = os.path.join(os.path.dirname(__file__), "cookies.json")
 
 def load_cookies():
     with open(COOKIES_FILE, 'r') as f:
-        cookies = json.load(f)
-    for c in cookies:
+        raw = json.load(f)
+    cleaned = []
+    for c in raw:
+        entry = {
+            'name': c['name'],
+            'value': c['value'],
+            'domain': c['domain'],
+            'path': c.get('path', '/'),
+        }
         if 'sameSite' in c:
-            c['sameSite'] = c['sameSite'].capitalize()
-            if c['sameSite'] not in ['Strict', 'Lax', 'None']:
-                c['sameSite'] = 'Lax'
+            s = c['sameSite'].capitalize()
+            entry['sameSite'] = s if s in ['Strict', 'Lax', 'None'] else 'Lax'
         if 'expirationDate' in c:
-            c['expires'] = c.pop('expirationDate')
-    return cookies
+            entry['expires'] = c['expirationDate']
+        if 'httpOnly' in c:
+            entry['httpOnly'] = c['httpOnly']
+        if 'secure' in c:
+            entry['secure'] = c['secure']
+        cleaned.append(entry)
+    return cleaned
 
 
-def _connect_chrome(p):
-    try:
-        browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
-        print("Connected to existing Chrome")
-        return browser, browser.contexts[0]
-    except Exception as e:
-        print(f"Could not connect to Chrome on port 9222: {e}")
-        raise
+def _new_context(p):
+    browser = p.chromium.launch(
+        headless=True,
+        args=[
+            '--disable-blink-features=AutomationControlled',
+            '--no-sandbox',
+            '--disable-dev-shm-usage',
+        ]
+    )
+    context = browser.new_context(
+        viewport={'width': 1280, 'height': 900},
+        user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    )
+    context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+    context.add_cookies(load_cookies())
+    return browser, context
 
 
-def _wait_for_cloudflare(page, timeout=15000):
-    """Wait for Cloudflare challenge to clear if present."""
-    start = __import__('time').time()
-    while (__import__('time').time() - start) * 1000 < timeout:
+def _wait_past_cloudflare(page, timeout_ms=15000):
+    elapsed = 0
+    while elapsed < timeout_ms:
         content = page.content().lower()
         if 'checking your browser' in content or 'just a moment' in content:
             page.wait_for_timeout(2000)
+            elapsed += 2000
             continue
+        if 'sign in' in page.url.lower() or 'login' in page.url.lower():
+            print("ERROR: Shopify session expired - update cookies via /shopify-cookies")
+            return False
         return True
     print("Cloudflare challenge did not clear in time")
     return False
@@ -67,13 +89,16 @@ def screenshot_shopify_order(store_url, order_number, output_dir="/tmp"):
 
     try:
         with sync_playwright() as p:
-            browser, context = _connect_chrome(p)
+            browser, context = _new_context(p)
             page = context.new_page()
 
             url = f"https://{store_url}/admin/orders?query={order_number}"
             print(f"Loading: {url}")
             page.goto(url, wait_until="domcontentloaded", timeout=60000)
-            _wait_for_cloudflare(page)
+
+            if not _wait_past_cloudflare(page):
+                browser.close()
+                return None
             page.wait_for_timeout(3000)
 
             try:
@@ -85,14 +110,14 @@ def screenshot_shopify_order(store_url, order_number, output_dir="/tmp"):
                     page.locator('table tbody tr').first.click()
                     page.wait_for_timeout(3000)
                 except:
-                    page.close()
+                    browser.close()
                     return None
 
             do_scroll(page)
             page.wait_for_timeout(1000)
             page.screenshot(path=output_path, full_page=False)
             print(f"Screenshot saved: {output_path}")
-            page.close()
+            browser.close()
             return output_path
     except Exception as e:
         print(f"Error: {e}")
@@ -107,19 +132,22 @@ def screenshot_shopify_order_by_url(external_reference, order_number, output_dir
 
     try:
         with sync_playwright() as p:
-            browser, context = _connect_chrome(p)
+            browser, context = _new_context(p)
             page = context.new_page()
 
             print(f"Loading: {external_reference}")
             page.goto(external_reference, wait_until="domcontentloaded", timeout=60000)
-            _wait_for_cloudflare(page)
+
+            if not _wait_past_cloudflare(page):
+                browser.close()
+                return None
             page.wait_for_timeout(3000)
 
             do_scroll(page)
             page.wait_for_timeout(1000)
             page.screenshot(path=output_path, full_page=False)
             print(f"Screenshot saved: {output_path}")
-            page.close()
+            browser.close()
             return output_path
     except Exception as e:
         print(f"Error: {e}")

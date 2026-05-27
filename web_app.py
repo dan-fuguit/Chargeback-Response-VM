@@ -188,6 +188,10 @@ HTML = '''
             <a href="/" class="btn btn-secondary">Generate Another</a>
         </div>
         {% else %}
+        <div style="text-align:right; margin-bottom: 12px;">
+            <a href="/shopify-cookies" style="font-size:12px; color:#4facfe; text-decoration:none; margin-right:12px;">Update Shopify Cookies</a>
+            <a href="/cookies" style="font-size:12px; color:#4facfe; text-decoration:none;">Update FUGU Cookies</a>
+        </div>
         <form method="POST" id="form">
             <input type="text" name="payment_id" id="payment_id" placeholder="Enter Payment ID" required>
             <div style="display: flex; gap: 10px; margin: 10px 0 20px 0;">
@@ -346,6 +350,49 @@ COOKIES_HTML = '''
 '''
 
 FUGU_COOKIES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fugu_cookies.json")
+SHOPIFY_COOKIES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.json")
+
+
+@app.route('/shopify-cookies', methods=['GET', 'POST'])
+def update_shopify_cookies():
+    message = None
+    msg_type = None
+
+    current_cookies = ''
+    if os.path.exists(SHOPIFY_COOKIES_FILE):
+        with open(SHOPIFY_COOKIES_FILE, 'r') as f:
+            current_cookies = f.read()
+
+    if request.method == 'POST':
+        raw = request.form.get('cookies_json', '').strip()
+        try:
+            cookies = json.loads(raw)
+            if not isinstance(cookies, list):
+                raise ValueError("Expected a JSON array")
+            with open(SHOPIFY_COOKIES_FILE, 'w') as f:
+                json.dump(cookies, f, indent=2)
+            current_cookies = json.dumps(cookies, indent=2)
+            message = f"Saved {len(cookies)} Shopify cookies successfully."
+            msg_type = 'success'
+        except Exception as e:
+            message = f"Invalid JSON: {e}"
+            msg_type = 'error'
+
+    html = COOKIES_HTML.replace(
+        'Update FUGU Session Cookies',
+        'Update Shopify Admin Cookies'
+    ).replace(
+        'Paste fresh cookies here when the session expires — no code editing needed.',
+        'Paste fresh cookies here when Shopify admin screenshots stop working.'
+    ).replace(
+        'Open <strong>app.fugu-it.com</strong> in Chrome and log in',
+        'Open <strong>admin.shopify.com</strong> in Chrome and log in'
+    ).replace(
+        '/cookies page',
+        '/shopify-cookies page'
+    )
+
+    return render_template_string(html, message=message, msg_type=msg_type, current_cookies=current_cookies)
 
 
 @app.route('/cookies', methods=['GET', 'POST'])
