@@ -21,6 +21,7 @@ from session_evidence_extractor import SessionEvidenceExtractor
 from shopify_order_screenshot import screenshot_with_context as order_screenshot_with_context
 from shopify_tracking import ShopifyTrackingCapture, get_shipping_proof
 from fugu_screenshot import screenshot_payment_info
+from fugu_embedded import capture_fugu_sections
 from public_records import get_public_records
 from map_generator import generate_location_map
 from card_details import get_card_details_image, get_avs_details_image
@@ -150,7 +151,7 @@ async def async_call_webhook(paymentid):
     return await async_run(_call)
 
 
-async def async_shopify_screenshots(tenant_id, shop_name, external_reference, clean_reference, tenant_name):
+async def async_shopify_screenshots(tenant_id, shop_name, external_reference, clean_reference, tenant_name, paymentid=None):
     """
     Order + tracking screenshots in a single CDP session.
     Connecting to Chrome twice in parallel causes new windows — sharing one
@@ -209,10 +210,18 @@ async def async_shopify_screenshots(tenant_id, shop_name, external_reference, cl
                         cap2.screenshot_with_context(context, tracking_url, tracking_path)
                         cap2.close()
                         results['tracking_screenshot'] = tracking_path
-                        results['tracking_url'] = tracking_url
                         print("  ✓ Tracking screenshot")
                     except Exception as e:
                         print(f"  Tracking screenshot error: {e}")
+                    # Keep the link even when the carrier page can't be captured
+                    results['tracking_url'] = tracking_url
+
+                # FUGU identity + AVS cards, from the FUGU app inside Shopify admin
+                if paymentid and shop_name:
+                    try:
+                        results.update(capture_fugu_sections(context, shop_name, paymentid, SCREENSHOT_DIR))
+                    except Exception as e:
+                        print(f"  FUGU sections error: {e}")
 
         except Exception as e:
             print(f"CDP connection error: {e}")
@@ -324,7 +333,7 @@ async def process_chargeback_async(paymentid, output_format="pdf"):
         print("Running parallel tasks for FRAUD case...")
 
         tasks = {
-            'shopify': async_shopify_screenshots(tenant_id, shop_name or tenant, external_reference, clean_reference, tenant),
+            'shopify': async_shopify_screenshots(tenant_id, shop_name or tenant, external_reference, clean_reference, tenant, paymentid),
             'identity': async_screenshot_identity(paymentid, tenant_id),
             'card_details': async_get_card_details(tenant_id, external_reference, reference),
             'session': async_get_session_evidence(paymentid),
@@ -349,8 +358,12 @@ async def process_chargeback_async(paymentid, output_format="pdf"):
                 screenshots['order_screenshot'] = shopify['order_screenshot']
             if shopify.get('tracking_screenshot'):
                 screenshots['tracking_screenshot'] = shopify['tracking_screenshot']
+            if shopify.get('tracking_url'):
                 screenshots['tracking_url'] = shopify.get('tracking_url')
-        if results_dict.get('identity') and not isinstance(results_dict['identity'], Exception):
+        if isinstance(shopify, dict) and shopify.get('identity_screenshot'):
+            screenshots['identity_screenshot'] = shopify['identity_screenshot']
+            print(f"  ✓ Identity screenshot (FUGU in Shopify)")
+        elif results_dict.get('identity') and not isinstance(results_dict['identity'], Exception):
             screenshots['identity_screenshot'] = results_dict['identity']
             print(f"  ✓ Identity screenshot")
         if results_dict.get('card_details') and not isinstance(results_dict['card_details'], Exception):
@@ -369,7 +382,10 @@ async def process_chargeback_async(paymentid, output_format="pdf"):
             public_records_data = results_dict['public_records']
             public_records_data['_phone_number'] = payer_mobile
             print(f"  ✓ Public records")
-        if results_dict.get('avs') and not isinstance(results_dict['avs'], Exception):
+        if 'avs' in tasks and isinstance(shopify, dict) and shopify.get('avs_screenshot'):
+            screenshots['avs_screenshot'] = shopify['avs_screenshot']
+            print(f"  ✓ AVS details (FUGU in Shopify)")
+        elif results_dict.get('avs') and not isinstance(results_dict['avs'], Exception):
             if results_dict['avs'].get('screenshot_path'):
                 screenshots['avs_screenshot'] = results_dict['avs']['screenshot_path']
                 print(f"  ✓ AVS details")
@@ -399,6 +415,7 @@ async def process_chargeback_async(paymentid, output_format="pdf"):
                 screenshots['order_screenshot'] = shopify['order_screenshot']
             if shopify.get('tracking_screenshot'):
                 screenshots['tracking_screenshot'] = shopify['tracking_screenshot']
+            if shopify.get('tracking_url'):
                 screenshots['tracking_url'] = shopify.get('tracking_url')
         if results_dict.get('card_details') and not isinstance(results_dict['card_details'], Exception):
             if results_dict['card_details'].get('screenshot_path'):
@@ -430,6 +447,7 @@ async def process_chargeback_async(paymentid, output_format="pdf"):
                 screenshots['order_screenshot'] = shopify['order_screenshot']
             if shopify.get('tracking_screenshot'):
                 screenshots['tracking_screenshot'] = shopify['tracking_screenshot']
+            if shopify.get('tracking_url'):
                 screenshots['tracking_url'] = shopify.get('tracking_url')
         if results_dict.get('card_details') and not isinstance(results_dict['card_details'], Exception):
             if results_dict['card_details'].get('screenshot_path'):
@@ -461,6 +479,7 @@ async def process_chargeback_async(paymentid, output_format="pdf"):
                 screenshots['order_screenshot'] = shopify['order_screenshot']
             if shopify.get('tracking_screenshot'):
                 screenshots['tracking_screenshot'] = shopify['tracking_screenshot']
+            if shopify.get('tracking_url'):
                 screenshots['tracking_url'] = shopify.get('tracking_url')
         if results_dict.get('card_details') and not isinstance(results_dict['card_details'], Exception):
             if results_dict['card_details'].get('screenshot_path'):

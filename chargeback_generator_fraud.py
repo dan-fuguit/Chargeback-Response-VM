@@ -78,7 +78,7 @@ def create_proof_placeholder(placeholder_text):
     return placeholder_table
 
 
-def add_screenshot_to_story(story, screenshot_path, placeholder_text, caption=None):
+def add_screenshot_to_story(story, screenshot_path, placeholder_text, caption=None, max_w=6.5, max_h=3.5):
     """Helper to add screenshot or placeholder to story"""
     caption_style = ParagraphStyle('caption', fontSize=8, alignment=TA_CENTER, textColor=HexColor('#4a5568'))
 
@@ -86,8 +86,8 @@ def add_screenshot_to_story(story, screenshot_path, placeholder_text, caption=No
         try:
             img = Image(screenshot_path)
             img_width, img_height = img.wrap(0, 0)
-            max_width = 6.5 * inch
-            max_height = 3.5 * inch
+            max_width = max_w * inch
+            max_height = max_h * inch
             scale = min(max_width / img_width, max_height / img_height, 1)
             img.drawWidth = img_width * scale
             img.drawHeight = img_height * scale
@@ -379,7 +379,8 @@ def generate_pdf(data, kyc_images, output_path, session_evidence=None, tenant_na
                 story,
                 screenshots.get('card_details_screenshot'),
                 "INSERT: Card Details Screenshot",
-                caption="Payment Gateway Card Details"
+                caption="Payment Gateway Card Details",
+                max_w=2.4, max_h=2.4
             )
 
             # Add AVS screenshot if available (for fraud cases with AVS Y match)
@@ -399,7 +400,8 @@ def generate_pdf(data, kyc_images, output_path, session_evidence=None, tenant_na
                     story,
                     screenshots.get('avs_screenshot'),
                     "INSERT: AVS Verification Screenshot",
-                    caption="AVS & Payment Verification Details"
+                    caption="AVS & Payment Verification Details",
+                    max_w=3.2, max_h=1.8
                 )
 
             story.append(Spacer(1, 10))

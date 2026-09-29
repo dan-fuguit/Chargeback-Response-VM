@@ -41,6 +41,10 @@ def accept_cookies(page):
 # =========================
 def accept_age_verification(page):
     selectors = [
+        '#ac-ag-accept',                      # AgeChecker.net (Everything 420)
+        '.ac-ag-button',
+        'text=/21 or older/i',
+        'text=/18 or older/i',
         'button:has-text("Enter Site")',
         'button:has-text("Yes, I am")',
         'button:has-text("Yes, I\'m")',
@@ -67,9 +71,20 @@ def accept_age_verification(page):
                 btn.click()
                 page.wait_for_timeout(1500)
                 print("Age verification accepted")
-                return
+                break
         except:
             pass
+    # Make sure no age gate overlay is left covering the page
+    try:
+        page.evaluate("""() => {
+            const sel = '#agechecker-age-gate, #ac-ag-popup, [id*="age-gate"], [class*="age-gate"], '
+                      + '[id*="agegate"], [class*="agegate"], [id*="age-verification"], [class*="age-verification"]';
+            document.querySelectorAll(sel).forEach(e => e.remove());
+            document.documentElement.style.overflow = '';
+            document.body.style.overflow = '';
+        }""")
+    except:
+        pass
 
 
 # =========================
@@ -189,6 +204,15 @@ class ShopifyTrackingCapture:
             page_content = page.content().lower()
             if "unable to retrieve" in page_content or "we are sorry" in page_content:
                 raise Exception("FedEx blocked page")
+            if "can't find that tracking number" in page_content or "cannot find that tracking number" in page_content:
+                print("Carrier says tracking number not found, retrying once...")
+                page.reload(wait_until="domcontentloaded", timeout=60000)
+                page.wait_for_timeout(10000)
+                accept_age_verification(page)
+                accept_cookies(page)
+                c2 = page.content().lower()
+                if "can't find that tracking number" in c2 or "cannot find that tracking number" in c2:
+                    raise Exception("Carrier page shows 'tracking number not found' - skipping screenshot")
             try:
                 page.wait_for_selector(
                     "text=Delivered, text=In transit, text=Out for delivery, text=Shipment information",

@@ -189,106 +189,48 @@ def extract_card_data(transactions, reference):
 
 
 def generate_card_image(data, output_path):
-    """Generate Shopify-style card details image"""
+    """Generate a compact Shopify-style card details image"""
+    import html as _h
+    esc = lambda v: _h.escape(str(v or ''))
 
-    # Build optional fields HTML
-    optional_fields = ""
+    rows = [
+        ("Card details", f"{data.get('card_brand', 'Card')} •••• •••• •••• {data.get('card_last4', '0000')}"),
+        ("Name on card", data.get('cardholder_name', '')),
+        ("Amount", data.get('amount', '')),
+    ]
     if data.get('gateway'):
-        gateway_display = data['gateway'].replace('_', ' ').title()
-        optional_fields += f"""
-            <div class="field">
-                <div class="field-label">Gateway</div>
-                <div class="field-value">{gateway_display}</div>
-            </div>
-        """
+        rows.append(("Gateway", data['gateway'].replace('_', ' ').title()))
     if data.get('status'):
-        optional_fields += f"""
-            <div class="field">
-                <div class="field-label">Status</div>
-                <div class="field-value">{data['status'].title()}</div>
-            </div>
-        """
+        rows.append(("Status", data['status'].title()))
     if data.get('type'):
-        optional_fields += f"""
-            <div class="field">
-                <div class="field-label">Type</div>
-                <div class="field-value">{data['type'].title()}</div>
-            </div>
-        """
+        rows.append(("Type", data['type'].title()))
+
+    fields = "".join(
+        f'<div class="field"><div class="label">{esc(k)}</div><div class="value">{esc(v)}</div></div>'
+        for k, v in rows if v
+    )
 
     html_content = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <style>
-            * {{
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-            }}
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
             body {{
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-                background: #F1F1F1;
-                padding: 16px;
-                font-size: 14px;
-                color: #303030;
-                line-height: 1.5;
+                background: #ffffff; font-size: 13px; color: #303030; line-height: 1.35;
             }}
-            .container {{
-                max-width: 300px;
-            }}
-            .field {{
-                margin-bottom: 14px;
-            }}
-            .field-label {{
-                font-weight: 600;
-                font-size: 14px;
-                color: #303030;
-            }}
-            .field-value {{
-                font-size: 14px;
-                color: #303030;
-            }}
+            .container {{ display: inline-block; background: #F1F1F1; padding: 12px 16px; min-width: 190px; }}
+            .field {{ margin-bottom: 9px; }}
+            .field:last-child {{ margin-bottom: 0; }}
+            .label {{ font-weight: 600; }}
+            .chip {{ display: inline-block; background: #E3E3E3; border-radius: 8px; padding: 1px 8px; margin-top: 2px; font-size: 12px; }}
         </style>
     </head>
     <body>
         <div class="container">
-            <div class="field">
-                <div class="field-label">Order</div>
-                <div class="field-value">{data.get('order_number', '#000000')}</div>
-            </div>
-
-            <div class="field">
-                <div class="field-label">Card details</div>
-                <div class="field-value">{data.get('card_brand', 'Visa')} •••• •••• •••• {data.get('card_last4', '0000')}</div>
-            </div>
-
-            <div class="field">
-                <div class="field-label">Name on card</div>
-                <div class="field-value">{data.get('cardholder_name', '')}</div>
-            </div>
-
-            <div class="field">
-                <div class="field-label">Authorization key</div>
-                <div class="field-value">{data.get('authorization_key', '')}</div>
-            </div>
-
-            <div class="field">
-                <div class="field-label">Amount</div>
-                <div class="field-value">{data.get('amount', '$0.00')}</div>
-            </div>
-
-            {optional_fields}
-
-            <div class="field">
-                <div class="field-label">Message</div>
-                <div class="field-value">{data.get('message', 'Payment complete.')}</div>
-            </div>
-
-            <div class="field">
-                <div class="field-label">Created</div>
-                <div class="field-value">{data.get('created', '')}</div>
-            </div>
+            <div class="field"><div class="label">Order</div><div class="chip">{esc(data.get('order_number', ''))}</div></div>
+            {fields}
         </div>
     </body>
     </html>
@@ -304,7 +246,7 @@ def generate_card_image(data, output_path):
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            page = browser.new_page(viewport={'width': 400, 'height': 600})
+            page = browser.new_page(viewport={'width': 400, 'height': 600}, device_scale_factor=2)
             page.goto(f"file:///{html_path}")
             page.wait_for_timeout(500)
 
