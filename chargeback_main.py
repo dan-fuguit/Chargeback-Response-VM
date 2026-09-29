@@ -89,6 +89,29 @@ def get_reason_type(reason):
     return "fraud"
 
 
+def parse_llm_json(text):
+    """
+    Parse the LLM's JSON answer. Some models (e.g. gpt-4o) wrap it in
+    ```json ... ``` fences or add text around it, which breaks json.loads.
+    """
+    import re
+    t = text.strip()
+    m = re.search(r"```(?:json)?\s*(.*?)```", t, re.DOTALL)
+    if m:
+        t = m.group(1).strip()
+    try:
+        return json.loads(t)
+    except Exception:
+        start, end = t.find('{'), t.rfind('}')
+        if start != -1 and end > start:
+            try:
+                return json.loads(t[start:end + 1])
+            except Exception:
+                pass
+    print("WARNING: could not parse LLM output as JSON")
+    return {}
+
+
 def parse_response(response):
     llm_data = {}
     kyc_images = {'id_card': None, 'selfie': None, 'card': None}
@@ -99,10 +122,7 @@ def parse_response(response):
         if 'output' in response:
             output = response['output']
             if isinstance(output, str):
-                try:
-                    llm_data = json.loads(output)
-                except:
-                    pass
+                llm_data = parse_llm_json(output)
             else:
                 llm_data = output
         if 'kyc_images' in response:
