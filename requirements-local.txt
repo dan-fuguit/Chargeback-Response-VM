@@ -1,0 +1,10 @@
+# Dependencias para correr en la PC local (versiones nuevas, compatibles con Python 3.14)
+# La VM sigue usando requirements.txt
+flask
+reportlab
+python-docx
+mysql-connector-python
+redis
+requests
+playwright
+Pillow
