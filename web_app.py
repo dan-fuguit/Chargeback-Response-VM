@@ -186,11 +186,11 @@ HTML = '''
             <input type="text" name="payment_id" id="payment_id" placeholder="Enter Payment ID" required>
             <div style="display: flex; gap: 10px; margin: 10px 0 20px 0;">
                 <label style="flex: 1; display: flex; align-items: center; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; cursor: pointer; transition: border-color 0.3s;">
-                    <input type="radio" name="output_format" value="pdf" checked style="margin-right: 8px; accent-color: #4facfe;">
+                    <input type="radio" name="output_format" value="pdf" style="margin-right: 8px; accent-color: #4facfe;">
                     <span style="font-size: 14px; color: #2d3748;">PDF Document</span>
                 </label>
                 <label style="flex: 1; display: flex; align-items: center; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; cursor: pointer; transition: border-color 0.3s;">
-                    <input type="radio" name="output_format" value="docx" style="margin-right: 8px; accent-color: #4facfe;">
+                    <input type="radio" name="output_format" value="docx" checked style="margin-right: 8px; accent-color: #4facfe;">
                     <span style="font-size: 14px; color: #2d3748;">Word Document</span>
                 </label>
             </div>

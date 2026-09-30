@@ -41,14 +41,28 @@ _FIND_ROWS_JS = """
 """
 
 
-def _find_fugu_frame(page, timeout_ms=30000):
+def _find_fugu_frame(page, timeout_ms=45000):
+    """The embedded app is an iframe; find it by URL, or by the frame showing the FUGU card."""
     waited = 0
     while waited < timeout_ms:
         for fr in page.frames:
-            if "fugu-it.com" in (fr.url or ""):
+            u = (fr.url or "").lower()
+            if fr == page.main_frame or not u.startswith("http"):
+                continue
+            if "fugu" in u and "admin.shopify.com" not in u:
                 return fr
+        for fr in page.frames:
+            if fr == page.main_frame:
+                continue
+            try:
+                if fr.locator("text=Credit Card Number").count() > 0:
+                    return fr
+            except Exception:
+                pass
         page.wait_for_timeout(1000)
         waited += 1000
+    from urllib.parse import urlparse
+    print("  FUGU: frames seen: " + ", ".join(sorted({urlparse(fr.url).netloc for fr in page.frames if fr.url})))
     return None
 
 
@@ -86,9 +100,9 @@ def capture_fugu_sections(context, shop_name, payment_id, output_dir="/tmp"):
             print("  FUGU: embedded app frame not found (is Chrome logged in to this store?)")
             return results
         try:
-            frame.wait_for_selector("text=Payment Information", timeout=30000)
+            frame.wait_for_selector("text=Credit Card Number", timeout=40000)
         except Exception:
-            print("  FUGU: 'Payment Information' not found in app")
+            print("  FUGU: payment card not found in app (wrong store, or payment not in FUGU?)")
             return results
         page.wait_for_timeout(2500)
 

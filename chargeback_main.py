@@ -382,7 +382,7 @@ async def process_chargeback_async(paymentid, output_format="pdf"):
             public_records_data = results_dict['public_records']
             public_records_data['_phone_number'] = payer_mobile
             print(f"  ✓ Public records")
-        if 'avs' in tasks and isinstance(shopify, dict) and shopify.get('avs_screenshot'):
+        if isinstance(shopify, dict) and shopify.get('avs_screenshot'):
             screenshots['avs_screenshot'] = shopify['avs_screenshot']
             print(f"  ✓ AVS details (FUGU in Shopify)")
         elif results_dict.get('avs') and not isinstance(results_dict['avs'], Exception):

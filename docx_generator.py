@@ -180,10 +180,20 @@ def _add_transaction_table(doc, data):
     return table
 
 
-def _add_image(doc, image_path, caption=None, max_width=6.0):
+def _add_image(doc, image_path, caption=None, max_width=6.0, max_height=4.0):
     if image_path and os.path.exists(image_path):
         try:
-            doc.add_picture(image_path, width=Inches(max_width))
+            # Fit inside max_width x max_height keeping the aspect ratio
+            width = max_width
+            try:
+                from PIL import Image as _PILImage
+                with _PILImage.open(image_path) as im:
+                    w_px, h_px = im.size
+                if w_px and h_px:
+                    width = min(max_width, max_height * w_px / h_px)
+            except Exception:
+                pass
+            doc.add_picture(image_path, width=Inches(width))
             last_paragraph = doc.paragraphs[-1]
             last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
@@ -338,7 +348,7 @@ def generate_docx_fraud(data, kyc_images, output_path, session_evidence=None,
         if key == "payment_proof":
             _add_section_header(doc, f"{section_number}. {header}")
             _add_body_text(doc, "The following payment details were captured and verified during the transaction:")
-            _add_image(doc, screenshots.get('card_details_screenshot'), "Payment Gateway Card Details")
+            _add_image(doc, screenshots.get('card_details_screenshot'), "Payment Gateway Card Details", max_width=2.2, max_height=3.0)
 
             if screenshots.get('avs_screenshot'):
                 if proof_data:
@@ -349,7 +359,7 @@ def generate_docx_fraud(data, kyc_images, output_path, session_evidence=None,
                         payment_text = proof_data
                     if payment_text:
                         _add_body_text(doc, payment_text)
-                _add_image(doc, screenshots.get('avs_screenshot'), "AVS & Payment Verification Details")
+                _add_image(doc, screenshots.get('avs_screenshot'), "AVS & Payment Verification Details", max_width=3.5, max_height=2.0)
             section_number += 1
             continue
 
@@ -557,7 +567,7 @@ def generate_docx_pnr(data, output_path, tenant_name=None, screenshots=None):
     # Section 2: Card Details
     _add_section_header(doc, "2. Card Details")
     _add_body_text(doc, "The following card details were captured from the payment gateway:")
-    _add_image(doc, screenshots.get('card_details_screenshot'), "Payment Gateway Card Details")
+    _add_image(doc, screenshots.get('card_details_screenshot'), "Payment Gateway Card Details", max_width=2.2, max_height=3.0)
 
     # Section 3: Shipping Proof
     _add_section_header(doc, "3. Shipping proof")
@@ -665,7 +675,7 @@ def generate_docx_pna(data, output_path, tenant_name=None, screenshots=None):
     # Section 2: Card Details
     _add_section_header(doc, "2. Card Details")
     _add_body_text(doc, "The following card details were captured from the payment gateway:")
-    _add_image(doc, screenshots.get('card_details_screenshot'), "Payment Gateway Card Details")
+    _add_image(doc, screenshots.get('card_details_screenshot'), "Payment Gateway Card Details", max_width=2.2, max_height=3.0)
 
     # Section 3: Shipping Proof
     _add_section_header(doc, "3. Shipping proof")
@@ -790,7 +800,7 @@ def generate_docx_cnp(data, output_path, tenant_name=None, screenshots=None):
             "The following payment details confirm that the transaction was successfully authorised and "
             "captured. No credit or refund was issued against this payment."
         )
-    _add_image(doc, screenshots.get('card_details_screenshot'), "Payment Gateway Card Details")
+    _add_image(doc, screenshots.get('card_details_screenshot'), "Payment Gateway Card Details", max_width=2.2, max_height=3.0)
 
     # Section 3: Shipping Proof
     _add_section_header(doc, "3. Shipping proof")
