@@ -15,7 +15,7 @@ import requests
 
 KEEPALIVE_MINUTES = int(os.environ.get('KEEPALIVE_MINUTES', '20'))
 CDP_URL = "http://127.0.0.1:9222"
-LOGIN_MARKERS = ('accounts.shopify.com', '/login', '/lookup', '/two-factor', '/verify')
+LOGIN_MARKERS = ('/challenges/', 'user_verification', 'accounts.shopify.com', '/login', '/lookup', '/two-factor', '/verify')
 
 STATUS = {'logged_in': None, 'checked_at': None, 'error': None}
 _alert_sent = False
