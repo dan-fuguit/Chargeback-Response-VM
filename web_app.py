@@ -8,6 +8,7 @@ import json
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from chargeback_main import process_chargeback
+import shopify_keepalive
 
 app = Flask(__name__)
 app.secret_key = 'fugu-chargeback-secret-key'
@@ -169,6 +170,11 @@ HTML = '''
             <p>Generate dispute response documents</p>
         </div>
         
+        {% if shopify_status and shopify_status.logged_in == False %}
+        <div style="background:#ffe5e5;border:1px solid #e53935;color:#b71c1c;padding:12px;border-radius:8px;margin-bottom:16px;font-size:14px;">
+            ⚠️ Shopify is asking to log in again (2FA). Open Chromium on the VM and log in to Shopify before generating documents.
+        </div>
+        {% endif %}
         {% if success and file_id %}
         <div class="success-box">
             <div class="checkmark">✅</div>
@@ -422,5 +428,11 @@ def update_cookies():
     return render_template_string(COOKIES_HTML, message=message, msg_type=msg_type, current_cookies=current_cookies)
 
 
+@app.context_processor
+def inject_shopify_status():
+    return {'shopify_status': shopify_keepalive.STATUS}
+
+
 if __name__ == '__main__':
+    shopify_keepalive.start()
     app.run(host='0.0.0.0', port=5000)
