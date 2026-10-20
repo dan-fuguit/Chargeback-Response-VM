@@ -235,6 +235,10 @@ def index():
             output_format = 'pdf'
 
         try:
+            st = shopify_keepalive.STATUS
+            stale = not st.get('checked_at') or (time.time() - st['checked_at'].timestamp()) > 300
+            if st.get('logged_in') is False or stale:
+                shopify_keepalive.check_once()
             result = process_chargeback(payment_id, output_format)
             if result and os.path.exists(result):
                 file_id = str(uuid.uuid4())
