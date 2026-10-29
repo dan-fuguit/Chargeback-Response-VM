@@ -9,6 +9,7 @@ import json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from chargeback_main import process_chargeback
 import shopify_keepalive
+import gdrive_upload
 
 app = Flask(__name__)
 app.secret_key = 'fugu-chargeback-secret-key'
@@ -180,7 +181,14 @@ HTML = '''
             <div class="checkmark">✅</div>
             <h2>Document Ready!</h2>
             <p>Your chargeback response has been generated successfully.</p>
+            {% if drive and drive.ok %}
+            <p style="margin:10px 0;">Saved to Google Drive{% if drive.sheet %} and linked in the sheet (tab <b>{{ drive.sheet.tab }}</b>, row {{ drive.sheet.row }}){% else %}. <b>Order not found in the sheet</b>, paste the link manually{% endif %}.</p>
+            <a href="{{ drive.url }}" target="_blank" class="btn btn-success">Open Google Doc</a>
+            <a href="/download/{{ file_id }}" class="btn btn-secondary">Download {{ file_format }}</a>
+            {% else %}
+            {% if drive and not drive.ok %}<p style="color:#c53030;margin:10px 0;">Google Drive upload failed: {{ drive.error }}</p>{% endif %}
             <a href="/download/{{ file_id }}" class="btn btn-success">Download {{ file_format }}</a>
+            {% endif %}
             <a href="/" class="btn btn-secondary">Generate Another</a>
         </div>
         {% else %}
@@ -244,7 +252,10 @@ def index():
                 file_id = str(uuid.uuid4())
                 completed_files[file_id] = result
                 file_format = "Word Document" if output_format == "docx" else "PDF"
-                return render_template_string(HTML, success=True, file_id=file_id, file_format=file_format)
+                drive = None
+                if output_format == "docx" and gdrive_upload.is_enabled():
+                    drive = gdrive_upload.upload(result)
+                return render_template_string(HTML, success=True, file_id=file_id, file_format=file_format, drive=drive)
             else:
                 return render_template_string(HTML, message="Failed to generate document", message_type="error")
         except Exception as e:
