@@ -12,6 +12,7 @@ import threading
 import time
 import datetime
 import requests
+import subprocess
 import base64
 import hashlib
 import hmac
@@ -89,9 +90,38 @@ def _auto_verify(page):
     return ok
 
 
+
+def _ensure_cdp_chrome():
+    """If Chromium is not listening on :9222 (e.g. someone closed it and reopened it
+    normally), restart it with the debugging port so screenshots keep working."""
+    try:
+        requests.get(CDP_URL + "/json/version", timeout=5)
+        return True
+    except Exception:
+        pass
+    print("[keepalive] Chromium debugging port is down - restarting Chromium with --remote-debugging-port=9222")
+    try:
+        subprocess.run(['pkill', '-f', 'chromium'], timeout=15)
+        time.sleep(4)
+        subprocess.Popen(['/snap/bin/chromium', '--remote-debugging-port=9222', '--restore-last-session'],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        for _ in range(30):
+            time.sleep(2)
+            try:
+                requests.get(CDP_URL + "/json/version", timeout=5)
+                print("[keepalive] Chromium is back on :9222")
+                return True
+            except Exception:
+                continue
+    except Exception as e:
+        print(f"[keepalive] could not restart Chromium: {e}")
+    return False
+
+
 def check_once():
     global _alert_sent
     from playwright.sync_api import sync_playwright
+    _ensure_cdp_chrome()
     try:
         with sync_playwright() as p:
             browser = p.chromium.connect_over_cdp(CDP_URL)
