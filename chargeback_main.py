@@ -152,33 +152,71 @@ async def async_call_webhook(paymentid):
 
 
 
-TRACKING_HOST_HINTS = ('usps.com', 'ups.com', 'fedex.com', 'dhl.', 'ontrac', 'lasership', 'canadapost',
-                       '17track', 'parcelsapp', 'aftership', 'track', 'shipment', 'tracking')
+CARRIER_URLS = {
+    'usps': 'https://tools.usps.com/go/TrackConfirmAction?tLabels={n}',
+    'ups': 'https://www.ups.com/track?tracknum={n}',
+    'fedex': 'https://www.fedex.com/fedextrack/?trknbr={n}',
+    'dhl': 'https://www.dhl.com/us-en/home/tracking/tracking-express.html?tracking-id={n}',
+}
+
+FIND_TRACKING_JS = """() => {
+    const re = /^(1Z[0-9A-Z]{16}|[0-9]{10,34}|[A-Z]{2}[0-9]{9}[A-Z]{2})$/;
+    const els = [...document.querySelectorAll('*')].filter(
+        x => x.childElementCount === 0 && re.test((x.textContent || '').trim()));
+    for (const e of els) {
+        let ctx = '';
+        let n = e;
+        for (let i = 0; i < 3 && n; i++) { n = n.parentElement; ctx = n ? n.textContent : ctx; }
+        if (!/seguimiento|tracking/i.test(ctx || '')) continue;
+        const link = e.closest('a, s-internal-link, s-link, [href]');
+        return {number: e.textContent.trim(),
+                href: link ? (link.getAttribute('href') || '') : '',
+                ctx: (ctx || '').slice(0, 160)};
+    }
+    return null;
+}"""
 
 
 def find_tracking_url_in_admin(context, order_url):
-    """Fallback when the Shopify API can't return the order: read the tracking link
-    shown in the fulfillment card of the order page in Shopify admin."""
+    """Fallback when the Shopify API can't return the order: open the order page in
+    Shopify admin, find the tracking number ("Seguimiento de USPS: ...") and click it,
+    like a person would, taking the URL of the tab that opens."""
     page = context.new_page()
     try:
         page.goto(order_url, wait_until="domcontentloaded", timeout=60000)
-        page.wait_for_timeout(6000)
-        hrefs = page.evaluate("""() => Array.from(document.querySelectorAll('a[href]')).map(a => a.href)""")
-        for h in hrefs:
-            hl = h.lower()
-            if 'shopify.com' in hl or 'myshopify' in hl:
-                continue
-            if any(k in hl for k in TRACKING_HOST_HINTS):
-                print(f"Tracking URL from Shopify admin: {h}")
-                return h
+        page.wait_for_timeout(8000)
+        info = page.evaluate(FIND_TRACKING_JS)
+        if not info:
+            print("No tracking number found on the order page")
+            return None
+        number, href, ctx = info['number'], info.get('href') or '', info.get('ctx', '').lower()
+        print(f"Tracking number on order page: {number}")
+        if href.startswith('http') and 'shopify.com' not in href:
+            return href
+        try:
+            with context.expect_page(timeout=15000) as new_tab:
+                page.get_by_text(number, exact=True).first.click()
+            tab = new_tab.value
+            tab.wait_for_load_state("domcontentloaded", timeout=30000)
+            url = tab.url
+            tab.close()
+            if url and url.startswith('http'):
+                print(f"Tracking URL from Shopify admin: {url}")
+                return url
+        except Exception as e:
+            print(f"Tracking click error: {e}")
+        for carrier, tpl in CARRIER_URLS.items():
+            if carrier in ctx:
+                return tpl.format(n=number)
+        return CARRIER_URLS['usps'].format(n=number) if number.isdigit() and len(number) >= 20 else None
     except Exception as e:
         print(f"Tracking link lookup error: {e}")
+        return None
     finally:
         try:
             page.close()
         except Exception:
             pass
-    return None
 
 
 async def async_shopify_screenshots(tenant_id, shop_name, external_reference, clean_reference, tenant_name, paymentid=None):
