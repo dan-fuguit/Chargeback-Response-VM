@@ -151,6 +151,36 @@ async def async_call_webhook(paymentid):
     return await async_run(_call)
 
 
+
+TRACKING_HOST_HINTS = ('usps.com', 'ups.com', 'fedex.com', 'dhl.', 'ontrac', 'lasership', 'canadapost',
+                       '17track', 'parcelsapp', 'aftership', 'track', 'shipment', 'tracking')
+
+
+def find_tracking_url_in_admin(context, order_url):
+    """Fallback when the Shopify API can't return the order: read the tracking link
+    shown in the fulfillment card of the order page in Shopify admin."""
+    page = context.new_page()
+    try:
+        page.goto(order_url, wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_timeout(6000)
+        hrefs = page.evaluate("""() => Array.from(document.querySelectorAll('a[href]')).map(a => a.href)""")
+        for h in hrefs:
+            hl = h.lower()
+            if 'shopify.com' in hl or 'myshopify' in hl:
+                continue
+            if any(k in hl for k in TRACKING_HOST_HINTS):
+                print(f"Tracking URL from Shopify admin: {h}")
+                return h
+    except Exception as e:
+        print(f"Tracking link lookup error: {e}")
+    finally:
+        try:
+            page.close()
+        except Exception:
+            pass
+    return None
+
+
 async def async_shopify_screenshots(tenant_id, shop_name, external_reference, clean_reference, tenant_name, paymentid=None):
     """
     Order + tracking screenshots in a single CDP session.
@@ -202,6 +232,9 @@ async def async_shopify_screenshots(tenant_id, shop_name, external_reference, cl
                         print("  ✓ Order screenshot")
                     except Exception as e:
                         print(f"  Order screenshot error: {e}")
+
+                if not tracking_url and order_url:
+                    tracking_url = find_tracking_url_in_admin(context, order_url)
 
                 if tracking_url:
                     tracking_path = os.path.join(SCREENSHOT_DIR, f"tracking_{clean_reference}.png")

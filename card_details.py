@@ -72,6 +72,51 @@ def get_order_transactions(shop_url, access_token, order_id):
         return None
 
 
+
+def get_db_transactions(order_id):
+    """Fallback when the Shopify API refuses the request (e.g. 403 for orders older
+    than 60 days): build Shopify-like transactions from FUGU's own transactions table."""
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT kind, status, gateway, amount, currency, created_at, authorization,
+                   credit_card_number, credit_card_company, credit_card_bin,
+                   avs_result_code, cvv_result_code, card_holder
+            FROM transactions WHERE payment_id = %s ORDER BY created_at
+        """, (str(order_id),))
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"DB transactions error: {e}")
+        return None
+    txns = []
+    for r in rows:
+        created = r.get('created_at')
+        txns.append({
+            'kind': r.get('kind'),
+            'status': r.get('status'),
+            'gateway': r.get('gateway') or '',
+            'amount': str(r.get('amount') or '0.00'),
+            'currency': r.get('currency'),
+            'created_at': created.isoformat() if hasattr(created, 'isoformat') else (created or ''),
+            'authorization': r.get('authorization') or '',
+            'payment_details': {
+                'credit_card_number': r.get('credit_card_number') or '',
+                'credit_card_company': r.get('credit_card_company') or '',
+                'credit_card_name': r.get('card_holder') or '',
+                'credit_card_bin': r.get('credit_card_bin') or '',
+                'avs_result_code': r.get('avs_result_code') or '',
+                'cvv_result_code': r.get('cvv_result_code') or '',
+            },
+            'receipt': {},
+        })
+    if txns:
+        print(f"Using {len(txns)} transaction(s) from FUGU DB")
+    return txns or None
+
+
 def extract_card_data(transactions, reference):
     """Extract card data for image generation"""
     if not transactions:
@@ -279,13 +324,12 @@ def get_card_details_image(tenant_id, order_id, reference, output_dir=None):
         output_dir = tempfile.gettempdir()
 
     # Get Shopify credentials
-    creds = get_shopify_credentials(tenant_id)
-    if not creds:
-        print("Could not get Shopify credentials")
-        return None
+    creds = get_shopify_credentials(tenant_id) or {'shop_url': '', 'access_token': ''}
 
     # Fetch transactions
     transactions = get_order_transactions(creds['shop_url'], creds['access_token'], order_id)
+    if not transactions:
+        transactions = get_db_transactions(order_id)
     if not transactions:
         print("No transactions found")
         return None
@@ -662,13 +706,12 @@ def get_avs_details_image(tenant_id, order_id, reference, output_dir=None):
         output_dir = tempfile.gettempdir()
 
     # Get Shopify credentials
-    creds = get_shopify_credentials(tenant_id)
-    if not creds:
-        print("Could not get Shopify credentials")
-        return None
+    creds = get_shopify_credentials(tenant_id) or {'shop_url': '', 'access_token': ''}
 
     # Fetch transactions
     transactions = get_order_transactions(creds['shop_url'], creds['access_token'], order_id)
+    if not transactions:
+        transactions = get_db_transactions(order_id)
     if not transactions:
         print("No transactions found")
         return None
