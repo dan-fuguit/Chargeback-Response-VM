@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 slack_webhook.txt
 gdrive_config.json
+bulk_regen_done.txt
