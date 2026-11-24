@@ -10,6 +10,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from chargeback_main import process_chargeback
 import shopify_keepalive
 import gdrive_upload
+import threading
+GENERATION_LOCK = threading.Lock()
 
 app = Flask(__name__)
 app.secret_key = 'fugu-chargeback-secret-key'
@@ -245,9 +247,10 @@ def index():
         try:
             st = shopify_keepalive.STATUS
             stale = not st.get('checked_at') or (time.time() - st['checked_at'].timestamp()) > 300
-            if st.get('logged_in') is False or stale:
-                shopify_keepalive.check_once()
-            result = process_chargeback(payment_id, output_format)
+            with GENERATION_LOCK:   # one at a time: all runs share the same Chromium
+                if st.get('logged_in') is False or stale:
+                    shopify_keepalive.check_once()
+                result = process_chargeback(payment_id, output_format)
             if result and os.path.exists(result):
                 file_id = str(uuid.uuid4())
                 completed_files[file_id] = result

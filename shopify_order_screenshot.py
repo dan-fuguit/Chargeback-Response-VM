@@ -24,22 +24,20 @@ def screenshot_with_context(context, order_url, output_path):
             else:
                 break
 
-        page.wait_for_timeout(4000)
-
-        for selector in [
-            '[class*="_OrderDetailsMainColumn_"]',
-            '[class*="OrderDetailsMainColumn"]',
-            'text="Fulfilled"',
-            'text="Unfulfilled"',
-            'text="Paid"',
-        ]:
+        # Wait until the order page has really rendered (the admin may be in Spanish or English)
+        ready = 'text=/Pagado|Preparado|No preparado|Paid|Fulfilled|Unfulfilled|Pendiente|Pending/'
+        loaded = False
+        for attempt in range(2):
             try:
-                el = page.locator(selector).first
-                if el.is_visible(timeout=1000):
-                    el.scroll_into_view_if_needed()
-                    break
-            except:
-                continue
+                page.locator(ready).first.wait_for(state="visible", timeout=30000)
+                loaded = True
+                break
+            except Exception:
+                print("Order page not rendered yet, reloading...")
+                page.reload(wait_until="domcontentloaded", timeout=60000)
+        if not loaded:
+            raise Exception("Shopify order page did not load (blank) - not using screenshot")
+        page.wait_for_timeout(2500)
 
         page.wait_for_timeout(1000)
         page.screenshot(path=output_path, full_page=False)

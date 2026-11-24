@@ -184,8 +184,12 @@ def find_tracking_url_in_admin(context, order_url):
     page = context.new_page()
     try:
         page.goto(order_url, wait_until="domcontentloaded", timeout=60000)
-        page.wait_for_timeout(8000)
-        info = page.evaluate(FIND_TRACKING_JS)
+        info = None
+        for _ in range(15):          # up to ~30s for the order page to render
+            page.wait_for_timeout(2000)
+            info = page.evaluate(FIND_TRACKING_JS)
+            if info:
+                break
         if not info:
             print("No tracking number found on the order page")
             return None
